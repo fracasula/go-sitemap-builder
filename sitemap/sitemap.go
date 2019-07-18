@@ -104,7 +104,7 @@ func (s *SiteMap) runTask(
 		if len(newURL) > 1 && string(newURL[len(newURL)-1]) == "/" { // remove ending slash
 			newURL = newURL[:len(newURL)-1]
 		}
-		if string(newURL[0]) == "/" {
+		if string(newURL[0]) == "/" { // it's a relative URL, make it absolute
 			newURL = parsedURL.Scheme + "://" + parsedURL.Host + newURL
 		}
 
@@ -113,16 +113,22 @@ func (s *SiteMap) runTask(
 			return fmt.Errorf("could not parse new URL %q: %v", newURL, err)
 		}
 
-		if parsedURL.Path == newParsedURL.Path {
+		if parsedURL.Path == newParsedURL.Path { // page is linking itself, skip
+			continue
+		}
+		if newParsedURL.Host != parsedURL.Host { // different website or sub-domain, skip
 			continue
 		}
 
-		if newParsedURL.Host != parsedURL.Host {
-			continue
+		path := parsedURL.Path
+		if path == "" { // if there's no path force it to "/" to avoid duplicates
+			path = "/"
 		}
 
-		s.addLinkToMap(parsedURL.Path, newParsedURL.Path)
+		// add path to sitemap
+		s.addLinkToMap(path, newParsedURL.Path)
 
+		// keep creating tasks if max depth hasn't been reached and page hasn't been visited yet
 		if t.depth <= s.maxDepth && !s.visitedPaths.Has(newParsedURL.Path) {
 			s.visitedPaths.Add(newParsedURL.Path)
 

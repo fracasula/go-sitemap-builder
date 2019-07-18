@@ -23,7 +23,7 @@ func main() {
 	var maxDepth int
 	flag.IntVar(&maxDepth, "maxDepth", 3, "Maximum depth when following links")
 	var concurrencyCap int
-	flag.IntVar(&concurrencyCap, "cap", 20, "Limits the amount of go routines that run at the same time")
+	flag.IntVar(&concurrencyCap, "cap", 40, "Limits the amount of go routines that run at the same time")
 	flag.Parse()
 
 	// Validating command line arguments
