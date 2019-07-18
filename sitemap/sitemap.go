@@ -11,26 +11,33 @@ import (
 	"sync"
 )
 
+type task struct {
+	url   string
+	depth int
+}
+
 type SiteMap struct {
-	Map            map[string][]string
+	siteMap        map[string][]string
 	mapLock        sync.Mutex
 	baseURL        string
 	visitedPaths   *set.Set
+	maxDepth       int
 	concurrencyCap int
 }
 
-func New(URL string, concurrencyCap int) *SiteMap {
+func New(URL string, maxDepth, concurrencyCap int) *SiteMap {
 	return &SiteMap{
-		Map:            make(map[string][]string),
+		siteMap:        make(map[string][]string),
 		baseURL:        URL,
 		visitedPaths:   set.New(),
+		maxDepth:       maxDepth,
 		concurrencyCap: concurrencyCap,
 	}
 }
 
 func (s *SiteMap) Build() []error {
-	tasks := make(chan string, s.concurrencyCap)
-	tasks <- s.baseURL
+	tasks := make(chan task, s.concurrencyCap)
+	tasks <- task{url: s.baseURL, depth: 1}
 
 	tasksWaitGroup := sync.WaitGroup{}
 	tasksWaitGroup.Add(len(tasks))
@@ -51,7 +58,7 @@ func (s *SiteMap) Build() []error {
 				return errsSlice
 			}
 
-			go func(t string) {
+			go func(t task) {
 				defer tasksWaitGroup.Done()
 				if err := s.runTask(t, tasks, &tasksWaitGroup); err != nil {
 					errsCh <- err
@@ -62,13 +69,13 @@ func (s *SiteMap) Build() []error {
 }
 
 func (s *SiteMap) runTask(
-	t string,
-	tasks chan<- string,
+	t task,
+	tasks chan<- task,
 	wg *sync.WaitGroup,
 ) error {
-	parsedURL, err := url.Parse(t)
+	parsedURL, err := url.Parse(t.url)
 	if err != nil {
-		return fmt.Errorf("could not parse Home %q: %v", t, err)
+		return fmt.Errorf("could not parse URL %q: %v", t.url, err)
 	}
 
 	res, err := http.Get(parsedURL.String())
@@ -116,11 +123,11 @@ func (s *SiteMap) runTask(
 
 		s.addLinkToMap(parsedURL.Path, newParsedURL.Path)
 
-		if !s.visitedPaths.Has(newParsedURL.Path) {
+		if t.depth <= s.maxDepth && !s.visitedPaths.Has(newParsedURL.Path) {
 			s.visitedPaths.Add(newParsedURL.Path)
 
 			wg.Add(1)
-			tasks <- newURL
+			tasks <- task{url: newURL, depth: t.depth + 1}
 		}
 	}
 
@@ -128,11 +135,21 @@ func (s *SiteMap) runTask(
 }
 
 func (s *SiteMap) Print() {
-	for path, links := range s.Map {
+	paths := make([]string, len(s.siteMap))
+
+	i := 0
+	for path := range s.siteMap {
+		paths[i] = path
+		i++
+	}
+
+	sort.Strings(paths)
+
+	for _, path := range paths {
 		fmt.Printf("> %s\n", path)
 
-		sort.Strings(links)
-		for _, link := range links {
+		sort.Strings(s.siteMap[path])
+		for _, link := range s.siteMap[path] {
 			fmt.Printf("  |- %s\n", link)
 		}
 	}
@@ -142,9 +159,9 @@ func (s *SiteMap) addLinkToMap(path, link string) {
 	s.mapLock.Lock()
 	defer s.mapLock.Unlock()
 
-	links, ok := s.Map[path]
+	links, ok := s.siteMap[path]
 	if !ok {
-		s.Map[path] = []string{link}
+		s.siteMap[path] = []string{link}
 		return
 	}
 
@@ -154,5 +171,5 @@ func (s *SiteMap) addLinkToMap(path, link string) {
 		}
 	}
 
-	s.Map[path] = append(links, link)
+	s.siteMap[path] = append(links, link)
 }
