@@ -120,17 +120,22 @@ func (s *SiteMap) runTask(
 			continue
 		}
 
+		// if there's no path force it to "/" to avoid duplicates
 		path := parsedURL.Path
-		if path == "" { // if there's no path force it to "/" to avoid duplicates
+		if path == "" {
 			path = "/"
+		}
+		newPath := newParsedURL.Path
+		if newPath == "" {
+			newPath = "/"
 		}
 
 		// add path to sitemap
-		s.addLinkToMap(path, newParsedURL.Path)
+		s.addLinkToMap(path, newPath)
 
 		// keep creating tasks if max depth hasn't been reached and page hasn't been visited yet
-		if t.depth <= s.maxDepth && !s.visitedPaths.Has(newParsedURL.Path) {
-			s.visitedPaths.Add(newParsedURL.Path)
+		if t.depth <= s.maxDepth && !s.visitedPaths.Has(newPath) {
+			s.visitedPaths.Add(newPath)
 
 			wg.Add(1)
 			tasks <- task{url: newURL, depth: t.depth + 1}
