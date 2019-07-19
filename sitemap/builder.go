@@ -19,46 +19,60 @@ func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (*Si
 	tasks <- task{url: URL, depth: 1}
 	semaphore := make(chan struct{}, concurrencyCap)
 
+	siteMap := newSitemap()
+	var errorsSlice []error
+	errorsChannel := make(chan error)
+
+	errGroup := sync.WaitGroup{}
 	waitGroup := sync.WaitGroup{}
 	waitGroup.Add(1)
+
 	go func() {
-		waitGroup.Wait()
-		close(tasks)
+		for {
+			select {
+			case err := <-errorsChannel:
+				errorsSlice = append(errorsSlice, err)
+				errGroup.Done()
+			case t := <-tasks:
+				// the semaphore is to avoid having too many goroutines running at the same time
+				semaphore <- struct{}{}
+
+				go func(t task) {
+					defer waitGroup.Done()
+
+					newTasks, errs := runTask(t, siteMap, f, maxDepth)
+					if len(errs) > 0 {
+						errGroup.Add(len(errs))
+
+						// avoid locking by simply queueing the errors
+						go func(errs []error) {
+							for _, err := range errs {
+								errorsChannel <- err
+							}
+						}(errs)
+					}
+
+					if len(newTasks) > 0 {
+						waitGroup.Add(len(newTasks))
+
+						// no need to wait here we can queue up the new tasks and unlock the semaphore
+						go func(newTasks []task) {
+							for _, newTask := range newTasks {
+								tasks <- newTask
+							}
+						}(newTasks)
+					}
+
+					<-semaphore
+				}(t)
+			}
+		}
 	}()
 
-	siteMap := newSitemap()
-	var errors []error
-	errorsLock := sync.Mutex{}
+	errGroup.Wait()
+	waitGroup.Wait()
 
-	for t := range tasks {
-		// the semaphore is to avoid having too many goroutines running at the same time
-		semaphore <- struct{}{}
-
-		go func(t task) {
-			defer waitGroup.Done()
-
-			newTasks, errs := runTask(t, siteMap, f, maxDepth)
-			if len(errs) > 0 {
-				errorsLock.Lock()
-				errors = append(errors, errs...)
-				errorsLock.Unlock()
-			}
-			if len(newTasks) > 0 {
-				waitGroup.Add(len(newTasks))
-
-				// no need to wait here we can queue up the new tasks and unlock the semaphore
-				go func(newTasks []task) {
-					for _, newTask := range newTasks {
-						tasks <- newTask
-					}
-				}(newTasks)
-			}
-
-			<-semaphore
-		}(t)
-	}
-
-	return siteMap, errors
+	return siteMap, errorsSlice
 }
 
 func runTask(
