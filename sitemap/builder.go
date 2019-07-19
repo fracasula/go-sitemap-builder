@@ -2,8 +2,8 @@ package sitemap
 
 import (
 	"fmt"
-	"net/http"
 	"net/url"
+	"sitemap-builder/fetcher"
 	"sitemap-builder/parser"
 	"strings"
 	"sync"
@@ -14,7 +14,7 @@ type task struct {
 	depth int
 }
 
-func Build(URL string, maxDepth, concurrencyCap int) (SiteMap, []error) {
+func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (SiteMap, []error) {
 	tasks := make(chan task, concurrencyCap)
 	tasks <- task{url: URL, depth: 1}
 
@@ -39,7 +39,7 @@ func Build(URL string, maxDepth, concurrencyCap int) (SiteMap, []error) {
 			}
 
 			go func(t task) {
-				if err := runTask(siteMap, t, tasks, &tasksWaitGroup, maxDepth); err != nil {
+				if err := runTask(siteMap, f, t, tasks, &tasksWaitGroup, maxDepth); err != nil {
 					errsCh <- err
 				}
 			}(t)
@@ -49,6 +49,7 @@ func Build(URL string, maxDepth, concurrencyCap int) (SiteMap, []error) {
 
 func runTask(
 	siteMap *SiteMap,
+	f fetcher.HTTPFetcher,
 	t task,
 	tasks chan<- task,
 	wg *sync.WaitGroup,
@@ -56,24 +57,12 @@ func runTask(
 ) error {
 	defer wg.Done()
 
-	parsedURL, err := url.Parse(t.url)
+	parsedURL, reader, err := f.Fetch(t.url, []string{"text/html"})
 	if err != nil {
-		return fmt.Errorf("could not parse URL %q: %v", t.url, err)
+		return fmt.Errorf("could not fetch %q", t.url)
 	}
 
-	res, err := http.Get(parsedURL.String())
-	if err != nil {
-		return fmt.Errorf("could not get %q: %v", parsedURL, err)
-	}
-
-	if !(res.StatusCode >= 200 && res.StatusCode < 300) {
-		return fmt.Errorf(
-			"invalid status code when getting %q, got %d, expected >=200 && <300",
-			parsedURL, res.StatusCode,
-		)
-	}
-
-	hrefs, err := parser.FindHrefs(res.Body)
+	hrefs, err := parser.FindHrefs(reader)
 	if err != nil {
 		return fmt.Errorf("could not parse %q: %v", parsedURL, err)
 	}

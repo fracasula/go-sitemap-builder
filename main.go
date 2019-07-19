@@ -6,13 +6,12 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"sitemap-builder/fetcher"
 	"sitemap-builder/sitemap"
 )
 
 /**
- * @TODO:
- * * fetcher interface
- * * inject logger with desired LEVEL
+ * @TODO: inject logger with desired LEVEL
  */
 func main() {
 	// Fetching command line arguments
@@ -47,7 +46,8 @@ func main() {
 	// Starting program
 	runtime.GOMAXPROCS(maxProcs)
 
-	sm, errs := sitemap.Build(parsedURL.String(), maxDepth, concurrencyCap)
+	f := fetcher.NewHTTPFetcher()
+	sm, errs := sitemap.Build(parsedURL.String(), f, maxDepth, concurrencyCap)
 	if err := sm.Print(os.Stdout); err != nil {
 		errs = append(errs, err)
 	}
