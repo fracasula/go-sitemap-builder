@@ -60,10 +60,10 @@ func runTask(
 	parsedURL, reader, err := f.Fetch(t.url, []string{"text/html"})
 	if err != nil {
 		// @TODO we could make Fetch return custom errors so that we could handle
-		// things like network unreachable (exit from the program),
+		// things like unreachable network (exit from the program),
 		// 504 timeouts (try again) and so on...
-		// Retries could be fairly simple, as easy as pushing the job to tasks
-		// again and then have a maxRetries parameter
+		// Retries could be fairly simple, as easy as pushing the job into the tasks
+		// channel again and then have a maxRetries parameter.
 		return fmt.Errorf("could not fetch %q: %v", t.url, err)
 	}
 
