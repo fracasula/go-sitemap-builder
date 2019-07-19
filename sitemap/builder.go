@@ -44,7 +44,7 @@ func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (*Si
 					if len(errs) > 0 {
 						errGroup.Add(len(errs))
 
-						// avoid locking by simply queueing the errors
+						// avoid locking by queueing the errors
 						go func(errs []error) {
 							for _, err := range errs {
 								errorsChannel <- err
@@ -55,7 +55,10 @@ func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (*Si
 					if len(newTasks) > 0 {
 						waitGroup.Add(len(newTasks))
 
-						// no need to wait here we can queue up the new tasks and unlock the semaphore
+						// we can't use the tasks channel as a semaphore because a single task could
+						// generate an arbitrary number of new tasks so we can't lock here just by
+						// pushing into tasks and a bigger buffer is a bad idea. let's create another
+						// go routine to avoid locking and let the semaphore handle the concurrency bound
 						go func(newTasks []task) {
 							for _, newTask := range newTasks {
 								tasks <- newTask
