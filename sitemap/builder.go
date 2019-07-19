@@ -45,11 +45,13 @@ func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (*Si
 			}
 			if len(newTasks) > 0 {
 				waitGroup.Add(len(newTasks))
-				go func() { // no need to wait we can queue up the new tasks and unlock the semaphore
+
+				// no need to wait here we can queue up the new tasks and unlock the semaphore
+				go func(newTasks []task) {
 					for _, newTask := range newTasks {
 						tasks <- newTask
 					}
-				}()
+				}(newTasks)
 			}
 
 			<-semaphore
