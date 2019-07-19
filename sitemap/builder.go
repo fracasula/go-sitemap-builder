@@ -59,7 +59,7 @@ func runTask(
 
 	parsedURL, reader, err := f.Fetch(t.url, []string{"text/html"})
 	if err != nil {
-		return fmt.Errorf("could not fetch %q", t.url)
+		return fmt.Errorf("could not fetch %q: %v", t.url, err)
 	}
 
 	hrefs, err := parser.FindHrefs(reader)

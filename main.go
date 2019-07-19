@@ -2,8 +2,8 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"runtime"
 	"sitemap-builder/fetcher"
@@ -26,13 +26,6 @@ func main() {
 	flag.Parse()
 
 	// Validating command line arguments
-	parsedURL, err := url.Parse(startingURL)
-	if err != nil {
-		log.Fatalf("Could not parse URL %q: %v", startingURL, err)
-	}
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		log.Fatalf("URL must have an http or https scheme")
-	}
 	if concurrencyCap < 1 {
 		log.Fatalf("Concurrency cap must be greater or equal to 1, got %d instead", concurrencyCap)
 	}
@@ -47,16 +40,19 @@ func main() {
 	runtime.GOMAXPROCS(maxProcs)
 
 	f := fetcher.NewHTTPFetcher()
-	sm, errs := sitemap.Build(parsedURL.String(), f, maxDepth, concurrencyCap)
+	sm, errs := sitemap.Build(startingURL, f, maxDepth, concurrencyCap)
 	if err := sm.Print(os.Stdout); err != nil {
 		errs = append(errs, err)
 	}
 
 	if len(errs) > 0 {
-		l := log.New(os.Stderr, "", log.LstdFlags)
-		l.Println("Errors while building sitemap:")
+		if _, printErr := fmt.Fprintln(os.Stderr, "Errors while building sitemap:"); printErr != nil {
+			os.Exit(1)
+		}
 		for _, err := range errs {
-			l.Printf("* %v\n", err)
+			if _, printErr := fmt.Fprintf(os.Stderr, "* %v\n", err); printErr != nil {
+				os.Exit(1)
+			}
 		}
 	}
 }
