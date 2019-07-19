@@ -17,46 +17,54 @@ type task struct {
 func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (*SiteMap, []error) {
 	tasks := make(chan task, concurrencyCap)
 	tasks <- task{url: URL, depth: 1}
+	semaphore := make(chan struct{}, concurrencyCap)
 
 	waitGroup := sync.WaitGroup{}
-	waitGroup.Add(len(tasks))
+	waitGroup.Add(1)
 	go func() {
 		waitGroup.Wait()
 		close(tasks)
 	}()
 
-	var errsSlice []error
-	errsCh := make(chan error)
 	siteMap := newSitemap()
+	var errors []error
+	errorsLock := sync.Mutex{}
 
-	for {
-		select {
-		case err := <-errsCh:
-			errsSlice = append(errsSlice, err)
-		case t, open := <-tasks:
-			if !open {
-				return siteMap, errsSlice
+	for t := range tasks {
+		// the semaphore is to avoid having too many goroutines running at the same time
+		semaphore <- struct{}{}
+
+		go func(t task) {
+			defer waitGroup.Done()
+
+			newTasks, errs := runTask(t, siteMap, f, maxDepth)
+			if len(errs) > 0 {
+				errorsLock.Lock()
+				errors = append(errors, errs...)
+				errorsLock.Unlock()
+			}
+			if len(newTasks) > 0 {
+				waitGroup.Add(len(newTasks))
+				go func() { // no need to wait we can queue up the new tasks and unlock the semaphore
+					for _, newTask := range newTasks {
+						tasks <- newTask
+					}
+				}()
 			}
 
-			go func(t task) {
-				if err := runTask(t, tasks, siteMap, f, &waitGroup, maxDepth); err != nil {
-					errsCh <- err
-				}
-			}(t)
-		}
+			<-semaphore
+		}(t)
 	}
+
+	return siteMap, errors
 }
 
 func runTask(
 	t task,
-	tasks chan<- task,
 	siteMap *SiteMap,
 	f fetcher.HTTPFetcher,
-	waitGroup *sync.WaitGroup,
 	maxDepth int,
-) error {
-	defer waitGroup.Done()
-
+) ([]task, []error) {
 	parsedURL, reader, err := f.Fetch(t.url, []string{"text/html"})
 	if err != nil {
 		// @TODO we could make Fetch return custom errors so that we could handle things
@@ -64,15 +72,17 @@ func runTask(
 		// Retries could be fairly simple, as easy as:
 		// * add a maxRetries to the "runTask" function
 		// * add the number of retries to the "task" struct
-		// * check whether the retries are less than maxRetries, if yes push the task again into the tasks chan
-		return fmt.Errorf("could not fetch %q: %v", t.url, err)
+		// * check whether the retries are less than maxRetries, if yes return the task again in the slice
+		return nil, []error{fmt.Errorf("could not fetch %q: %v", t.url, err)}
 	}
 
 	hrefs, err := parser.FindHrefs(reader)
 	if err != nil {
-		return fmt.Errorf("could not parse %q: %v", parsedURL, err)
+		return nil, []error{fmt.Errorf("could not parse %q: %v", parsedURL, err)}
 	}
 
+	var tasks []task
+	var errors []error
 	for _, href := range hrefs {
 		if len(href) == 0 {
 			continue
@@ -88,7 +98,8 @@ func runTask(
 
 		newParsedURL, err := url.Parse(newURL)
 		if err != nil {
-			return fmt.Errorf("could not parse new URL %q: %v", newURL, err)
+			errors = append(errors, fmt.Errorf("could not parse new URL %q: %v", newURL, err))
+			continue
 		}
 
 		if parsedURL.Path == newParsedURL.Path { // page is linking itself, skip
@@ -110,13 +121,12 @@ func runTask(
 
 		// keep creating tasks if max depth hasn't been reached and page hasn't been visited yet
 		if t.depth <= maxDepth && !siteMap.has(newPath) {
-			waitGroup.Add(1)
-			tasks <- task{url: newURL, depth: t.depth + 1}
+			tasks = append(tasks, task{url: newURL, depth: t.depth + 1})
 		}
 
 		// add path to sitemap
 		siteMap.addLink(path, newPath)
 	}
 
-	return nil
+	return tasks, errors
 }
