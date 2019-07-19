@@ -51,7 +51,6 @@ func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (*Si
 							}
 						}(errs)
 					}
-
 					if len(newTasks) > 0 {
 						waitGroup.Add(len(newTasks))
 
