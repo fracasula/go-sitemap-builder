@@ -10,9 +10,6 @@ import (
 	"sitemap-builder/sitemap"
 )
 
-/**
- * @TODO: inject logger with desired LEVEL
- */
 func main() {
 	// Fetching command line arguments
 	var startingURL string
