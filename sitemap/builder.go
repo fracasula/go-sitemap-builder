@@ -18,10 +18,9 @@ func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (*Si
 	tasks := make(chan task, concurrencyCap)
 	tasks <- task{url: URL, depth: 1}
 
-	tasksWaitGroup := sync.WaitGroup{}
-	tasksWaitGroup.Add(len(tasks))
+	waitGroup := sync.WaitGroup{}
 	go func() {
-		tasksWaitGroup.Wait()
+		waitGroup.Wait()
 		close(tasks)
 	}()
 
@@ -38,8 +37,12 @@ func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (*Si
 				return siteMap, errsSlice
 			}
 
+			waitGroup.Add(1)
+
 			go func(t task) {
-				if err := runTask(siteMap, f, t, tasks, &tasksWaitGroup, maxDepth); err != nil {
+				defer waitGroup.Done()
+
+				if err := runTask(t, tasks, siteMap, f, maxDepth); err != nil {
 					errsCh <- err
 				}
 			}(t)
@@ -48,15 +51,12 @@ func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (*Si
 }
 
 func runTask(
-	siteMap *SiteMap,
-	f fetcher.HTTPFetcher,
 	t task,
 	tasks chan<- task,
-	wg *sync.WaitGroup,
+	siteMap *SiteMap,
+	f fetcher.HTTPFetcher,
 	maxDepth int,
 ) error {
-	defer wg.Done()
-
 	parsedURL, reader, err := f.Fetch(t.url, []string{"text/html"})
 	if err != nil {
 		// @TODO we could make Fetch return custom errors so that we could handle
@@ -109,7 +109,6 @@ func runTask(
 
 		// keep creating tasks if max depth hasn't been reached and page hasn't been visited yet
 		if t.depth <= maxDepth && !siteMap.has(newPath) {
-			wg.Add(1)
 			tasks <- task{url: newURL, depth: t.depth + 1}
 		}
 
