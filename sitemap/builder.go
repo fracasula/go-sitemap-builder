@@ -14,7 +14,7 @@ type task struct {
 	depth int
 }
 
-func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (SiteMap, []error) {
+func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (*SiteMap, []error) {
 	tasks := make(chan task, concurrencyCap)
 	tasks <- task{url: URL, depth: 1}
 
@@ -35,7 +35,7 @@ func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (Sit
 			errsSlice = append(errsSlice, err)
 		case t, open := <-tasks:
 			if !open {
-				return *siteMap, errsSlice
+				return siteMap, errsSlice
 			}
 
 			go func(t task) {
