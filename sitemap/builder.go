@@ -18,12 +18,16 @@ func Build(URL string, f fetcher.HTTPFetcher, maxDepth, concurrencyCap int) (*Si
 	tasks := make(chan task, concurrencyCap)
 	tasks <- task{url: URL, depth: 1}
 
-	siteMap := newSitemap()
-	var errsSlice []error
-	errsCh := make(chan error)
-
 	waitGroup := sync.WaitGroup{}
 	waitGroup.Add(len(tasks))
+	go func() {
+		waitGroup.Wait()
+		close(tasks)
+	}()
+
+	var errsSlice []error
+	errsCh := make(chan error)
+	siteMap := newSitemap()
 
 	for {
 		select {
