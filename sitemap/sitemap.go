@@ -9,7 +9,7 @@ import (
 
 type SiteMap struct {
 	siteMap map[string][]string
-	mapLock sync.Mutex
+	lock    sync.Mutex
 }
 
 func newSitemap() *SiteMap {
@@ -19,16 +19,16 @@ func newSitemap() *SiteMap {
 }
 
 func (s *SiteMap) has(path string) bool {
-	s.mapLock.Lock()
-	defer s.mapLock.Unlock()
+	s.lock.Lock()
+	defer s.lock.Unlock()
 
 	_, ok := s.siteMap[path]
 	return ok
 }
 
 func (s *SiteMap) addLink(path, link string) {
-	s.mapLock.Lock()
-	defer s.mapLock.Unlock()
+	s.lock.Lock()
+	defer s.lock.Unlock()
 
 	links, ok := s.siteMap[path]
 	if !ok {
