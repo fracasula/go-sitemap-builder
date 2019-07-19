@@ -47,9 +47,10 @@ func main() {
 	// Starting program
 	runtime.GOMAXPROCS(maxProcs)
 
-	sm := sitemap.New(parsedURL.String(), maxDepth, concurrencyCap)
-	errs := sm.Build()
-	sm.Print()
+	sm, errs := sitemap.Build(parsedURL.String(), maxDepth, concurrencyCap)
+	if err := sm.Print(os.Stdout); err != nil {
+		errs = append(errs, err)
+	}
 
 	if len(errs) > 0 {
 		l := log.New(os.Stderr, "", log.LstdFlags)

@@ -2,171 +2,31 @@ package sitemap
 
 import (
 	"fmt"
-	"net/http"
-	"net/url"
-	"sitemap-builder/parser"
-	"sitemap-builder/set"
+	"io"
 	"sort"
-	"strings"
 	"sync"
 )
 
-type task struct {
-	url   string
-	depth int
-}
-
 type SiteMap struct {
-	siteMap        map[string][]string
-	mapLock        sync.Mutex
-	baseURL        string
-	visitedPaths   *set.Set
-	maxDepth       int
-	concurrencyCap int
+	siteMap map[string][]string
+	mapLock sync.Mutex
 }
 
-func New(URL string, maxDepth, concurrencyCap int) *SiteMap {
+func newSitemap() *SiteMap {
 	return &SiteMap{
-		siteMap:        make(map[string][]string),
-		baseURL:        URL,
-		visitedPaths:   set.New(),
-		maxDepth:       maxDepth,
-		concurrencyCap: concurrencyCap,
+		siteMap: make(map[string][]string),
 	}
 }
 
-func (s *SiteMap) Build() []error {
-	tasks := make(chan task, s.concurrencyCap)
-	tasks <- task{url: s.baseURL, depth: 1}
+func (s *SiteMap) has(path string) bool {
+	s.mapLock.Lock()
+	defer s.mapLock.Unlock()
 
-	tasksWaitGroup := sync.WaitGroup{}
-	tasksWaitGroup.Add(len(tasks))
-	go func() {
-		tasksWaitGroup.Wait()
-		close(tasks)
-	}()
-
-	var errsSlice []error
-	errsCh := make(chan error)
-
-	for {
-		select {
-		case err := <-errsCh:
-			errsSlice = append(errsSlice, err)
-		case t, open := <-tasks:
-			if !open {
-				return errsSlice
-			}
-
-			go func(t task) {
-				defer tasksWaitGroup.Done()
-				if err := s.runTask(t, tasks, &tasksWaitGroup); err != nil {
-					errsCh <- err
-				}
-			}(t)
-		}
-	}
+	_, ok := s.siteMap[path]
+	return ok
 }
 
-func (s *SiteMap) runTask(
-	t task,
-	tasks chan<- task,
-	wg *sync.WaitGroup,
-) error {
-	parsedURL, err := url.Parse(t.url)
-	if err != nil {
-		return fmt.Errorf("could not parse URL %q: %v", t.url, err)
-	}
-
-	res, err := http.Get(parsedURL.String())
-	if err != nil {
-		return fmt.Errorf("could not get %q: %v", parsedURL, err)
-	}
-
-	if !(res.StatusCode >= 200 && res.StatusCode < 300) {
-		return fmt.Errorf(
-			"invalid status code when getting %q, got %d, expected >=200 && <300",
-			parsedURL, res.StatusCode,
-		)
-	}
-
-	hrefs, err := parser.FindHrefs(res.Body)
-	if err != nil {
-		return fmt.Errorf("could not parse %q: %v", parsedURL, err)
-	}
-
-	for _, href := range hrefs {
-		if len(href) == 0 {
-			continue
-		}
-
-		newURL := strings.Trim(href, " ")
-		if len(newURL) > 1 && string(newURL[len(newURL)-1]) == "/" { // remove ending slash
-			newURL = newURL[:len(newURL)-1]
-		}
-		if string(newURL[0]) == "/" { // it's a relative URL, make it absolute
-			newURL = parsedURL.Scheme + "://" + parsedURL.Host + newURL
-		}
-
-		newParsedURL, err := url.Parse(newURL)
-		if err != nil {
-			return fmt.Errorf("could not parse new URL %q: %v", newURL, err)
-		}
-
-		if parsedURL.Path == newParsedURL.Path { // page is linking itself, skip
-			continue
-		}
-		if newParsedURL.Host != parsedURL.Host { // different website or sub-domain, skip
-			continue
-		}
-
-		// if there's no path force it to "/" to avoid duplicates
-		path := parsedURL.Path
-		if path == "" {
-			path = "/"
-		}
-		newPath := newParsedURL.Path
-		if newPath == "" {
-			newPath = "/"
-		}
-
-		// add path to sitemap
-		s.addLinkToMap(path, newPath)
-
-		// keep creating tasks if max depth hasn't been reached and page hasn't been visited yet
-		if t.depth <= s.maxDepth && !s.visitedPaths.Has(newPath) {
-			s.visitedPaths.Add(newPath)
-
-			wg.Add(1)
-			tasks <- task{url: newURL, depth: t.depth + 1}
-		}
-	}
-
-	return nil
-}
-
-func (s *SiteMap) Print() {
-	paths := make([]string, len(s.siteMap))
-
-	i := 0
-	for path := range s.siteMap {
-		paths[i] = path
-		i++
-	}
-
-	sort.Strings(paths)
-
-	for _, path := range paths {
-		fmt.Printf("> %s\n", path)
-
-		sort.Strings(s.siteMap[path])
-		for _, link := range s.siteMap[path] {
-			fmt.Printf("  |- %s\n", link)
-		}
-	}
-}
-
-func (s *SiteMap) addLinkToMap(path, link string) {
+func (s *SiteMap) addLink(path, link string) {
 	s.mapLock.Lock()
 	defer s.mapLock.Unlock()
 
@@ -183,4 +43,34 @@ func (s *SiteMap) addLinkToMap(path, link string) {
 	}
 
 	s.siteMap[path] = append(links, link)
+}
+
+// Print sorts the sitemap and prints it to a writer which works for the current use-case but it might be worth
+// refactoring if you end up calling this multiple times to make sure you sort only once (unless there have been
+// changes to the data in which case you'll need to sort again anyway)
+func (s *SiteMap) Print(w io.Writer) error {
+	paths := make([]string, len(s.siteMap))
+
+	i := 0
+	for path := range s.siteMap {
+		paths[i] = path
+		i++
+	}
+
+	sort.Strings(paths)
+
+	for _, path := range paths {
+		if _, err := fmt.Fprintf(w, "> %s\n", path); err != nil {
+			return err
+		}
+
+		sort.Strings(s.siteMap[path])
+		for _, link := range s.siteMap[path] {
+			if _, err := fmt.Fprintf(w, "  |- %s\n", link); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
