@@ -120,9 +120,6 @@ func runTask(
 			continue
 		}
 
-		if parsedURL.Path == newParsedURL.Path { // page is linking itself, skip
-			continue
-		}
 		if newParsedURL.Host != parsedURL.Host { // different website or sub-domain, skip
 			continue
 		}
@@ -137,13 +134,13 @@ func runTask(
 			newPath = "/"
 		}
 
+		// add path to sitemap
+		siteMap.addLink(path, newPath)
+
 		// keep creating tasks if max depth hasn't been reached and page hasn't been visited yet
 		if t.depth <= maxDepth && !siteMap.has(newPath) {
 			tasks = append(tasks, task{url: newURL, depth: t.depth + 1})
 		}
-
-		// add path to sitemap
-		siteMap.addLink(path, newPath)
 	}
 
 	return tasks, errors
