@@ -3,9 +3,11 @@ package fetcher
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 type HTTPFetcher interface {
@@ -15,10 +17,28 @@ type HTTPFetcher interface {
 
 // simpleHTTPFetcher only supports simple GETs and it doesn't support proxies
 // for proxies support implement your own fetcher or change this one
-type simpleHTTPFetcher struct{}
+type simpleHTTPFetcher struct {
+	client http.Client
+}
 
 func NewHTTPFetcher() HTTPFetcher {
-	return simpleHTTPFetcher{}
+	transport := http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	return simpleHTTPFetcher{
+		client: http.Client{
+			Transport: &transport,
+		},
+	}
 }
 
 func (f simpleHTTPFetcher) Fetch(rawurl string, allowedContentTypes []string) (*url.URL, io.Reader, error) {
@@ -31,7 +51,7 @@ func (f simpleHTTPFetcher) Fetch(rawurl string, allowedContentTypes []string) (*
 		return nil, nil, fmt.Errorf("URL must have an http or https scheme")
 	}
 
-	res, err := http.Get(parsedURL.String())
+	res, err := f.client.Get(parsedURL.String())
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not get %q: %v", parsedURL, err)
 	}
