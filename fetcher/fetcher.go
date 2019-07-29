@@ -34,14 +34,14 @@ func NewHTTPFetcher() HTTPFetcher {
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 
-	return simpleHTTPFetcher{
+	return &simpleHTTPFetcher{
 		client: http.Client{
 			Transport: &transport,
 		},
 	}
 }
 
-func (f simpleHTTPFetcher) Fetch(rawurl string, allowedContentTypes []string) (*url.URL, io.Reader, error) {
+func (f *simpleHTTPFetcher) Fetch(rawurl string, allowedContentTypes []string) (*url.URL, io.Reader, error) {
 	parsedURL, err := url.Parse(rawurl)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not parse URL %q: %v", rawurl, err)
