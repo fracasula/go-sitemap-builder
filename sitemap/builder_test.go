@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sitemap-builder/fetcher"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +26,7 @@ func TestBuild(t *testing.T) {
 
 	pipe := writer{}
 
-	f := fetcher.NewHTTPFetcher()
+	f := defaultFetcher()
 	sm, errs := Build(ts.URL, f, 100, 4)
 	require.Len(t, errs, 0)
 
@@ -66,7 +67,7 @@ func TestBuildMaxDepth(t *testing.T) {
 
 	pipe := writer{}
 
-	f := fetcher.NewHTTPFetcher()
+	f := defaultFetcher()
 	sm, errs := Build(ts.URL, f, 1, 4)
 	require.Len(t, errs, 0)
 
@@ -137,4 +138,8 @@ func router(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprint(w, `<html><body>Not Found</body></html>`)
 		return
 	}
+}
+
+func defaultFetcher() fetcher.HTTPFetcher {
+	return fetcher.NewHTTPFetcher(10 * time.Second)
 }

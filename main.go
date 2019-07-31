@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sitemap-builder/fetcher"
 	"sitemap-builder/sitemap"
+	"time"
 )
 
 func main() {
@@ -20,6 +21,8 @@ func main() {
 	flag.IntVar(&maxDepth, "maxDepth", 10, "Maximum depth when following links")
 	var concurrencyCap int
 	flag.IntVar(&concurrencyCap, "cap", 2600, "Limits the amount of go routines that run at the same time")
+	var httpTimeout int
+	flag.IntVar(&httpTimeout, "httpTimeout", 30, "Sets the timeout for all the HTTP requests")
 	flag.Parse()
 
 	// Validating command line arguments
@@ -36,7 +39,7 @@ func main() {
 	// Starting program
 	runtime.GOMAXPROCS(maxProcs)
 
-	f := fetcher.NewHTTPFetcher()
+	f := fetcher.NewHTTPFetcher(time.Duration(httpTimeout) * time.Second)
 	sm, errs := sitemap.Build(startingURL, f, maxDepth, concurrencyCap)
 	if err := sm.Print(os.Stdout); err != nil {
 		errs = append(errs, err)

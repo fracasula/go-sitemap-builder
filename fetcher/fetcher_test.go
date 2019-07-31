@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +18,7 @@ func TestSimpleHTTPFetcher_Fetch(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	f := NewHTTPFetcher()
+	f := defaultFetcher()
 	_, reader, err := f.Fetch(ts.URL, []string{"text/html"})
 	require.Nil(t, err)
 
@@ -34,7 +35,7 @@ func TestSimpleHTTPFetcher_Fetch_NotFound(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	f := NewHTTPFetcher()
+	f := defaultFetcher()
 	_, _, err := f.Fetch(ts.URL, []string{"text/html"})
 	require.NotNil(t, err)
 	require.Contains(t, err.Error(), "invalid status code")
@@ -47,8 +48,12 @@ func TestSimpleHTTPFetcher_Fetch_InvalidContentType(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	f := NewHTTPFetcher()
+	f := defaultFetcher()
 	_, _, err := f.Fetch(ts.URL, []string{"text/html"})
 	require.NotNil(t, err)
 	require.Contains(t, err.Error(), "must be one of [text/html]")
+}
+
+func defaultFetcher() HTTPFetcher {
+	return NewHTTPFetcher(10 * time.Second)
 }
