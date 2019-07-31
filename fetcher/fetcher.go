@@ -21,11 +21,11 @@ type simpleHTTPFetcher struct {
 	client http.Client
 }
 
-func NewHTTPFetcher() HTTPFetcher {
+func NewHTTPFetcher(timeout time.Duration) HTTPFetcher {
 	transport := http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
+			Timeout:   timeout,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 		MaxIdleConns:          100,
